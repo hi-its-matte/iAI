@@ -91,3 +91,10 @@ header {
 .input-area button:hover {
   background-color: #449e47;
 }
+#messageCounter {
+  margin-top: 5px;
+  font-size: 0.9rem;
+  color: #88cc55;
+  opacity: 0.8;
+  text-align: center;
+}
