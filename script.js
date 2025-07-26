@@ -1,24 +1,26 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // Variabili DOM
   const userInput = document.getElementById("userInput");
   const sendBtn = document.getElementById("sendBtn");
   const chatContainer = document.getElementById("chatContainer");
   const counterElement = document.getElementById("messageCounter");
 
-  // Gestione messaggi rimanenti con localStorage e reset giornaliero
-  const today = new Date().toISOString().split("T")[0];
-  const savedData = JSON.parse(localStorage.getItem("iAieUsage") || "{}");
+  let remainingMessages = 50;
 
-  let remainingMessages;
-  if (savedData.date === today) {
-    remainingMessages = savedData.remaining;
-  } else {
-    remainingMessages = 50;
-    localStorage.setItem("iAieUsage", JSON.stringify({ date: today, remaining: 50 }));
+  async function updateRemaining() {
+    try {
+      const res = await fetch("https://iam-backend-ibpf.onrender.com/usage");
+      const data = await res.json();
+      remainingMessages = data.remaining;
+      counterElement.textContent = `Messaggi rimasti oggi: ${remainingMessages}/50`;
+
+      if (remainingMessages <= 0) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Limite raggiunto";
+      }
+    } catch {
+      counterElement.textContent = "Impossibile recuperare il contatore messaggi.";
+    }
   }
-
-  // Aggiorna contatore UI
-  counterElement.textContent = `Messaggi rimasti oggi: ${remainingMessages}/50`;
 
   sendBtn.addEventListener("click", sendMessage);
   userInput.addEventListener("keydown", (e) => {
@@ -57,24 +59,34 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ message }),
       });
 
-      if (!response.ok) throw new Error(`Errore dal server: ${response.status}`);
+      if (!response.ok) {
+        if (response.status === 429) {
+          // Limite raggiunto lato server
+          appendMessage("bot", "⛔ Limite giornaliero di messaggi raggiunto.");
+          sendBtn.disabled = true;
+          sendBtn.textContent = "Limite raggiunto";
+          remainingMessages = 0;
+          counterElement.textContent = `Messaggi rimasti oggi: 0/50`;
+          return;
+        } else {
+          throw new Error(`Errore dal server: ${response.status}`);
+        }
+      }
 
       const data = await response.json();
-
       const loadingMsg = chatContainer.querySelector(".message.bot:last-child");
       if (loadingMsg && loadingMsg.textContent.includes("⏳")) {
         loadingMsg.textContent = data.reply;
-        remainingMessages--;
-        counterElement.textContent = `Messaggi rimasti oggi: ${remainingMessages}/50`;
-
-        localStorage.setItem("iAieUsage", JSON.stringify({ date: today, remaining: remainingMessages }));
-
-        if (remainingMessages <= 0) {
-          sendBtn.disabled = true;
-          sendBtn.textContent = "Limite raggiunto";
-        }
       } else {
         appendMessage("bot", data.reply);
+      }
+
+      remainingMessages = data.remaining;
+      counterElement.textContent = `Messaggi rimasti oggi: ${remainingMessages}/50`;
+
+      if (remainingMessages <= 0) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Limite raggiunto";
       }
     } catch (err) {
       const loadingMsg = chatContainer.querySelector(".message.bot:last-child");
@@ -86,4 +98,7 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Errore nel fetch:", err);
     }
   }
+
+  // All'avvio aggiorno il contatore globale
+  updateRemaining();
 });
